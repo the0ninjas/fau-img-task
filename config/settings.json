@@ -4,6 +4,16 @@
   "openface_output_dir": "openface_out",
   "camera_device_index": 0,
   "lsl_stream_name": "psychopy_markers",
-  "lsl_stream_type": "Markers"
+  "lsl_stream_type": "Markers",
+  "experiment_params": {
+    "n_trials": 40,
+    "n_sample_trials": 4,
+    "frame_probability": 0.3,
+    "fixation_duration": 1.0,
+    "image_duration": 4.0,
+    "emotion_duration": 5.0,
+    "iti_duration": 2.0,
+    "break_duration": 180.0
+  }
 }
 

@@ -10,15 +10,16 @@ from .utils import load_settings, launch_openface, MarkerOutlet, draw_red_frame
 def run_experiment():
     settings = load_settings()
 
-    # Parameters (can be adapted to load from a separate JSON or GUI dialog)
-    n_trials = 40
-    n_sample_trials = 4
-    frame_probability = 0.3
-    fixation_duration = 1.0
-    image_duration = 4.0
-    emotion_duration = 4.0
-    iti_duration = 2.0
-    break_duration = 180.0
+    # Parameters from settings.json (with defaults)
+    ex = settings.get('experiment_params', {})
+    n_trials = int(ex.get('n_trials', 40))
+    n_sample_trials = int(ex.get('n_sample_trials', 4))
+    frame_probability = float(ex.get('frame_probability', 0.3))
+    fixation_duration = float(ex.get('fixation_duration', 1.0))
+    image_duration = float(ex.get('image_duration', 4.0))
+    emotion_duration = float(ex.get('emotion_duration', 5.0))
+    iti_duration = float(ex.get('iti_duration', 2.0))
+    break_duration = float(ex.get('break_duration', 180.0))
 
     emotion_labels = [
         'amusement', 'awe', 'contentment', 'excitement', 'anger', 'disgust', 'fear', 'sadness'
@@ -66,13 +67,21 @@ def run_experiment():
     ), color=[1, 1, 1], height=28, wrapWidth=1400)
     thankyou = visual.TextStim(win, text='Thank you for participating!', color=[1, 1, 1], height=32)
 
-    # Emotion prompt mapping keys 1-8
-    emo_prompt_lines = [
-        'Which emotion best describes your reaction? (3s)\n',
-        '1) amusement   2) awe   3) contentment   4) excitement',
-        '5) anger       6) disgust   7) fear   8) sadness'
-    ]
-    emo_prompt = visual.TextStim(win, text='\n'.join(emo_prompt_lines), color=[1, 1, 1], height=26, wrapWidth=1600)
+    # Valence rating visuals (1 = most negative, 4 = neutral, 7 = most positive)
+    bar_width = 900
+    bar_height = 18
+    bar_y = -100
+    rating_bar = visual.Rect(win, width=bar_width, height=bar_height, lineColor=[1, 1, 1], fillColor=[0.2, 0.2, 0.2], pos=(0, bar_y), units='pix')
+    neg_label = visual.TextStim(win, text='- Negative', color=[1, -1, -1], height=24, pos=(-(bar_width/2) - 120, bar_y))
+    pos_label = visual.TextStim(win, text='+ Positive', color=[-1, 1, -1], height=24, pos=((bar_width/2) + 110, bar_y))
+    neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=40, pos=(-(bar_width/2), bar_y + 45))
+    pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=40, pos=((bar_width/2), bar_y + 45))
+    ticks = []
+    step = bar_width / 6.0
+    for i in range(7):
+        x = -bar_width/2 + i * step
+        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=22, pos=(x, bar_y - 40)))
+    rating_instr = visual.TextStim(win, text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)', color=[1, 1, 1], height=24, pos=(0, bar_y + 90), wrapWidth=1600)
 
     # Show instructions
     instruction.draw()
@@ -92,7 +101,7 @@ def run_experiment():
     csv_path = os.path.join(data_dir, f'behavior_{participant_id}_{session_id}.csv')
     with open(csv_path, 'w', encoding='utf-8') as f:
         headers = [
-            'trial_index', 'block', 'image_id', 'frame_present', 'response', 'reaction_time', 'correct', 'emotion_label', 'emotion_rt', 'feedback',
+            'trial_index', 'block', 'image_id', 'frame_present', 'response', 'reaction_time', 'correct', 'valence_rating', 'valence_rt', 'feedback',
             'timestamp_trial_start', 'timestamp_img_onset', 'timestamp_response', 'timestamp_emotion', 'timestamp_trial_end'
         ]
         f.write(','.join(headers) + '\n')
@@ -199,17 +208,23 @@ def run_experiment():
                 win.flip()
                 core.wait(2.0)
 
-            # Emotion rating window (3s from visual onset)
-            emo_choice = ''
-            emo_rt = ''
-            emo_prompt.draw()
+            # Valence rating window (duration from visual onset)
+            valence_choice = ''
+            valence_rt = ''
+            # Draw rating visuals once; keep on screen for the entire window
+            rating_instr.draw()
+            rating_bar.draw()
+            neg_label.draw(); pos_label.draw()
+            neg_emoji.draw(); pos_emoji.draw()
+            for t in ticks:
+                t.draw()
             prompt_onset_visual_ts = win.flip()
             kb.clock.reset()
             outlet.push('EMO_PROMPT_ONSET')
             emo_end_time = prompt_onset_visual_ts + emotion_duration
             choice_made = False
             while core.getTime() < emo_end_time:
-                keys = kb.getKeys(keyList=['1','2','3','4','5','6','7','8','escape'], waitRelease=False, clear=False)
+                keys = kb.getKeys(keyList=['1','2','3','4','5','6','7','escape'], waitRelease=False, clear=False)
                 if keys:
                     k = keys[-1]
                     if k.name == 'escape':
@@ -221,11 +236,10 @@ def run_experiment():
                                 pass
                         win.close()
                         core.quit()
-                    if not choice_made and k.name in [str(i) for i in range(1, 9)]:
-                        idx_ = int(k.name) - 1
-                        emo_choice = emotion_labels[idx_]
-                        emo_rt = k.rt
-                        outlet.push(f'EMO_RATING:{emo_choice}')
+                    if not choice_made and k.name in [str(i) for i in range(1, 8)]:
+                        valence_choice = k.name
+                        valence_rt = k.rt
+                        outlet.push(f'VALENCE_RATING:{valence_choice}')
                         choice_made = True
                 core.wait(0.005)
 
@@ -238,7 +252,7 @@ def run_experiment():
             # Write CSV row
             with open(csv_path, 'a', encoding='utf-8') as f:
                 row = [
-                    str(i), block_name, image_id, str(frame_present), str(responded), str(rt), str(correct), emo_choice, str(emo_rt), feedback_msg,
+                    str(i), block_name, image_id, str(frame_present), str(responded), str(rt), str(correct), valence_choice, str(valence_rt), feedback_msg,
                     str(trial_start_ts), str(img_onset_ts), str(response_ts), str(prompt_onset_visual_ts), str(trial_end_ts)
                 ]
                 f.write(','.join(row) + '\n')
