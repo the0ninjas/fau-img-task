@@ -56,35 +56,44 @@ def run_experiment():
     fixation = visual.TextStim(win, text='+', color=[1, 1, 1], height=40)
     feedback_text = visual.TextStim(win, text='', color=[1, 1, 1], height=28, wrapWidth=1200)
     instruction = visual.TextStim(win, text=(
-        'Welcome to the experiment\n\n'
-        'In each trial, you will see an image presented on the screen for 3 seconds.\n'
-        'Some images will have a red frame.\n'
-        'Press SPACE if you see the red frame while the image is displayed; do not press otherwise.\n\n'
-        'After each image, you will have 3 seconds to select which emotion best describes your reaction:\n'
-        'amusement, awe, contentment, excitement, anger, disgust, fear, sadness.\n\n'
-        'There will be a short break halfway through.\n\n'
-        'Press SPACE to begin practice.'
-    ), color=[1, 1, 1], height=28, wrapWidth=1400)
+        f'Welcome to the experiment\n\n'
+        f'Each trial shows an image for {image_duration:.1f}s.\n'
+        f'A valence rating scale (1 = most negative, 4 = neutral, 7 = most positive)\n'
+        f'appears below the image at the same time and remains for {emotion_duration:.1f}s.\n'
+        f'Press keys 1–7 to report how you feel.\n\n'
+        f'Some images will have a red frame. Press SPACE during the image if the red frame is present;\n'
+        f'do not press otherwise.\n\n'
+        f'There will be a short break halfway through.\n\n'
+        f'Press SPACE to begin practice.'
+    ), color=[1, 1, 1], height=26, wrapWidth=1400)
     thankyou = visual.TextStim(win, text='Thank you for participating!', color=[1, 1, 1], height=32)
 
     # Valence rating visuals (1 = most negative, 4 = neutral, 7 = most positive)
-    bar_width = 900
-    bar_height = 18
-    bar_y = -100
+    w, h = win.size
+    bar_width = min(900, int(w * 0.8))
+    bar_height = 14
+    # Compress rating section and push it closer to bottom
+    bar_y = -h/2 + 60
     rating_bar = visual.Rect(win, width=bar_width, height=bar_height, lineColor=[1, 1, 1], fillColor=[0.2, 0.2, 0.2], pos=(0, bar_y), units='pix')
-    neg_label = visual.TextStim(win, text='- Negative', color=[1, -1, -1], height=24, pos=(-(bar_width/2) - 120, bar_y))
-    pos_label = visual.TextStim(win, text='+ Positive', color=[-1, 1, -1], height=24, pos=((bar_width/2) + 110, bar_y))
-    neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=40, pos=(-(bar_width/2), bar_y + 45))
-    pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=40, pos=((bar_width/2), bar_y + 45))
+    neg_label = visual.TextStim(win, text='- Negative', color=[1, -1, -1], height=18, pos=(-(bar_width/2) - 100, bar_y))
+    pos_label = visual.TextStim(win, text='+ Positive', color=[-1, 1, -1], height=18, pos=((bar_width/2) + 90, bar_y))
+    neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=28, pos=(-(bar_width/2), bar_y + 34))
+    pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=28, pos=((bar_width/2), bar_y + 34))
     ticks = []
     step = bar_width / 6.0
     for i in range(7):
         x = -bar_width/2 + i * step
-        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=22, pos=(x, bar_y - 40)))
-    rating_instr = visual.TextStim(win, text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)', color=[1, 1, 1], height=24, pos=(0, bar_y + 90), wrapWidth=1600)
+        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=16, pos=(x, bar_y - 26)))
+    rating_instr = visual.TextStim(win, text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)', color=[1, 1, 1], height=18, pos=(0, bar_y + 60), wrapWidth=1600)
 
-    # Show instructions
+    # Show instructions (display the valence scale as part of the instructions)
     instruction.draw()
+    rating_instr.draw()
+    rating_bar.draw()
+    neg_label.draw(); pos_label.draw()
+    neg_emoji.draw(); pos_emoji.draw()
+    for t in ticks:
+        t.draw()
     win.flip()
     event.clearEvents()
     event.waitKeys(keyList=['space'])
@@ -147,27 +156,55 @@ def run_experiment():
             outlet.push('FIXATION_ONSET')
             core.wait(fixation_duration)
 
-            # Image presentation with optional red frame
+            # Image presentation with valence rating shown below the image
             kb.clearEvents()
             event.clearEvents()
             img = image_stims[image_path]
+            # Scale and center image to avoid overlap with rating area (compressed)
+            top_margin = 40.0
+            gap = 30.0
+            rating_section_total = 100.0  # compressed region used by labels/emoji
+            rating_top_y = bar_y + (rating_section_total / 2.0)
+            image_area_top = (h / 2.0) - top_margin
+            image_area_bottom = rating_top_y + gap
+            available_h = max(100.0, image_area_top - image_area_bottom)
+            orig_w, orig_h = img.size
+            scale = min(1.0, available_h / orig_h, (w * 0.9) / orig_w)
+            new_w, new_h = orig_w * scale, orig_h * scale
+            img.size = (new_w, new_h)
+            # Center image in the available vertical region
+            pos_y = (image_area_top + image_area_bottom) / 2.0
+            img.pos = (0, pos_y)
+
             img.draw()
             frame_rects = []
             if frame_present:
                 frame_rects = draw_red_frame(win, img)
                 for r in frame_rects:
                     r.draw()
+            # Draw rating visuals at image onset
+            rating_instr.draw()
+            rating_bar.draw()
+            neg_label.draw(); pos_label.draw()
+            neg_emoji.draw(); pos_emoji.draw()
+            for t in ticks:
+                t.draw()
             img_onset_ts = outlet.push(f'IMG_ONSET:{image_id}')
             outlet.push('FRAME_PRESENT' if frame_present else 'FRAME_ABSENT')
-            win.flip()
+            prompt_onset_visual_ts = win.flip()
+            kb.clock.reset()
+            outlet.push('EMO_PROMPT_ONSET')
 
-            # Reaction window during image
+            # Unified presentation: image for image_duration, rating for emotion_duration
             response_key = None
             response_ts = ''
             rt = ''
-            image_phase_clock = core.Clock()
-            while image_phase_clock.getTime() < image_duration:
-                keys = kb.getKeys(keyList=['space', 'escape'], waitRelease=False, clear=False)
+            valence_choice = ''
+            valence_rt = ''
+            end_time = prompt_onset_visual_ts + emotion_duration
+            while core.getTime() < end_time:
+                t_since = core.getTime() - prompt_onset_visual_ts
+                keys = kb.getKeys(keyList=['space','1','2','3','4','5','6','7','escape'], waitRelease=False, clear=False)
                 for k in keys:
                     if k.name == 'escape':
                         outlet.push('EXPT_ABORT')
@@ -178,14 +215,25 @@ def run_experiment():
                                 pass
                         win.close()
                         core.quit()
-                    if response_key is None and k.name == 'space':
+                    if t_since < image_duration and response_key is None and k.name == 'space':
                         response_key = 'space'
                         response_ts = outlet.push('KEYPRESS:space')
                         rt = k.rt
-                core.wait(0.005)
+                    if valence_choice == '' and k.name in [str(i) for i in range(1,8)]:
+                        valence_choice = k.name
+                        valence_rt = k.rt
+                        outlet.push(f'VALENCE_RATING:{valence_choice}')
 
-            # Remove image
-            win.flip()
+                if t_since < image_duration:
+                    img.draw()
+                    if frame_present:
+                        for r in frame_rects:
+                            r.draw()
+                rating_instr.draw(); rating_bar.draw(); neg_label.draw(); pos_label.draw(); neg_emoji.draw(); pos_emoji.draw()
+                for t in ticks:
+                    t.draw()
+                win.flip()
+                core.wait(0.005)
 
             # Compute correctness
             responded = 1 if response_key == 'space' else 0
@@ -208,40 +256,7 @@ def run_experiment():
                 win.flip()
                 core.wait(2.0)
 
-            # Valence rating window (duration from visual onset)
-            valence_choice = ''
-            valence_rt = ''
-            # Draw rating visuals once; keep on screen for the entire window
-            rating_instr.draw()
-            rating_bar.draw()
-            neg_label.draw(); pos_label.draw()
-            neg_emoji.draw(); pos_emoji.draw()
-            for t in ticks:
-                t.draw()
-            prompt_onset_visual_ts = win.flip()
-            kb.clock.reset()
-            outlet.push('EMO_PROMPT_ONSET')
-            emo_end_time = prompt_onset_visual_ts + emotion_duration
-            choice_made = False
-            while core.getTime() < emo_end_time:
-                keys = kb.getKeys(keyList=['1','2','3','4','5','6','7','escape'], waitRelease=False, clear=False)
-                if keys:
-                    k = keys[-1]
-                    if k.name == 'escape':
-                        outlet.push('EXPT_ABORT')
-                        if of_proc:
-                            try:
-                                of_proc.terminate()
-                            except Exception:
-                                pass
-                        win.close()
-                        core.quit()
-                    if not choice_made and k.name in [str(i) for i in range(1, 8)]:
-                        valence_choice = k.name
-                        valence_rt = k.rt
-                        outlet.push(f'VALENCE_RATING:{valence_choice}')
-                        choice_made = True
-                core.wait(0.005)
+            # (No extra loop here; unified loop already kept rating until end)
 
             # ITI
             win.flip()

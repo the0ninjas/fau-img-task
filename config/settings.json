@@ -11,7 +11,7 @@
     "frame_probability": 0.3,
     "fixation_duration": 1.0,
     "image_duration": 4.0,
-    "emotion_duration": 5.0,
+    "emotion_duration": 7.0,
     "iti_duration": 2.0,
     "break_duration": 180.0
   }
