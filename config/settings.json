@@ -1,0 +1,9 @@
+{
+  "openface_script": "./OpenFace-3.0/demo.py",
+  "openface_args": ["--device", "0"],
+  "openface_output_dir": "openface_out",
+  "camera_device_index": 0,
+  "lsl_stream_name": "psychopy_markers",
+  "lsl_stream_type": "Markers"
+}
+
