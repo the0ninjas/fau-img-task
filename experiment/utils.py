@@ -4,6 +4,7 @@ import json
 import subprocess
 import time
 from datetime import datetime
+import numpy as np
 
 from psychopy import visual
 
@@ -148,4 +149,97 @@ def get_image_list(stim_dir: str):
     images.sort()
     return images
 
+
+# ------------------------
+# Valence rating utilities
+# ------------------------
+
+def build_valence_ui(win: visual.Window, bar_height: float = 14):
+    """Create and return the valence rating UI elements bound to the given window.
+
+    Returns a dictionary with keys: rating_bar, grad_img, neg_label, pos_label,
+    neg_emoji, pos_emoji, ticks, rating_instr, bar_y, bar_width, bar_height.
+    """
+    w, h = win.size
+    bar_width = min(900, int(w * 0.8))
+    # Compress rating section and push it closer to bottom
+    bar_y = -h / 2 + 60
+
+    # Border-only bar; gradient drawn via single ImageStim
+    rating_bar = visual.Rect(
+        win, width=bar_width, height=bar_height, lineColor=[1, 1, 1], fillColor=None, pos=(0, bar_y), units='pix'
+    )
+
+    # Pre-render gradient array (float RGB 0..1) from red->green left to right
+    grad_arr = np.zeros((int(bar_height), int(bar_width), 3), dtype=np.float32)
+    for x in range(int(bar_width)):
+        t = x / max(1, int(bar_width) - 1)
+        r = 1.0 - t
+        g = t
+        grad_arr[:, x, 0] = r
+        grad_arr[:, x, 1] = g
+        grad_arr[:, x, 2] = 0.0
+    grad_img = visual.ImageStim(win, image=grad_arr, size=(bar_width, bar_height), pos=(0, bar_y), units='pix', interpolate=True)
+
+    # Labels, emojis, ticks, instruction
+    neg_label = visual.TextStim(win, text='Negative', color=[1, -1, -1], height=18, pos=(-(bar_width/2) - 100, bar_y))
+    pos_label = visual.TextStim(win, text='Positive', color=[-1, 1, -1], height=18, pos=((bar_width/2) + 90, bar_y))
+    neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=28, pos=(-(bar_width/2), bar_y + 34))
+    pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=28, pos=((bar_width/2), bar_y + 34))
+
+    ticks = []
+    step = bar_width / 6.0
+    for i in range(7):
+        x = -bar_width/2 + i * step
+        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=16, pos=(x, bar_y - 26)))
+
+    rating_instr = visual.TextStim(
+        win,
+        text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)',
+        color=[1, 1, 1], height=18, pos=(0, bar_y + 60), wrapWidth=1600
+    )
+
+    return {
+        'rating_bar': rating_bar,
+        'grad_img': grad_img,
+        'neg_label': neg_label,
+        'pos_label': pos_label,
+        'neg_emoji': neg_emoji,
+        'pos_emoji': pos_emoji,
+        'ticks': ticks,
+        'rating_instr': rating_instr,
+        'bar_y': bar_y,
+        'bar_width': bar_width,
+        'bar_height': bar_height,
+    }
+
+
+def draw_valence_ui(ui: dict, draw_instruction: bool = True):
+    """Draw the valence rating UI elements in the correct order."""
+    if draw_instruction and ui.get('rating_instr') is not None:
+        ui['rating_instr'].draw()
+    ui['grad_img'].draw()
+    ui['rating_bar'].draw()
+    ui['neg_label'].draw(); ui['pos_label'].draw()
+    ui['neg_emoji'].draw(); ui['pos_emoji'].draw()
+    for t in ui['ticks']:
+        t.draw()
+
+
+def layout_image_above_valence(win: visual.Window, image_stim: visual.ImageStim, ui: dict,
+                               top_margin: float = 40.0, gap: float = 30.0, rating_section_total: float = 100.0):
+    """Scale and center the image within the available region above the rating area to avoid overlap."""
+    w, h = win.size
+    bar_y = ui.get('bar_y', -h/2 + 60)
+    rating_top_y = bar_y + (rating_section_total / 2.0)
+    image_area_top = (h / 2.0) - top_margin
+    image_area_bottom = rating_top_y + gap
+    available_h = max(100.0, image_area_top - image_area_bottom)
+    orig_w, orig_h = image_stim.size
+    scale = min(1.0, available_h / orig_h, (w * 0.9) / orig_w)
+    new_w, new_h = orig_w * scale, orig_h * scale
+    image_stim.size = (new_w, new_h)
+    pos_y = (image_area_top + image_area_bottom) / 2.0
+    image_stim.pos = (0, pos_y)
+    return image_stim
 

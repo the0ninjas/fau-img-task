@@ -1,10 +1,11 @@
 import os
 import random
+import numpy as np
 
 from psychopy import visual, core, event, data
 from psychopy.hardware import keyboard
 
-from .utils import load_settings, launch_openface, MarkerOutlet, draw_red_frame
+from .utils import load_settings, launch_openface, MarkerOutlet, draw_red_frame, build_valence_ui, draw_valence_ui, layout_image_above_valence
 
 
 def run_experiment():
@@ -20,10 +21,6 @@ def run_experiment():
     emotion_duration = float(ex.get('emotion_duration', 5.0))
     iti_duration = float(ex.get('iti_duration', 2.0))
     break_duration = float(ex.get('break_duration', 180.0))
-
-    emotion_labels = [
-        'amusement', 'awe', 'contentment', 'excitement', 'anger', 'disgust', 'fear', 'sadness'
-    ]
 
     # Image list: gather from a local folder `stimuli/images` (all files with typical image extensions)
     stim_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'stimuli', 'images'))
@@ -70,30 +67,11 @@ def run_experiment():
 
     # Valence rating visuals (1 = most negative, 4 = neutral, 7 = most positive)
     w, h = win.size
-    bar_width = min(900, int(w * 0.8))
-    bar_height = 14
-    # Compress rating section and push it closer to bottom
-    bar_y = -h/2 + 60
-    rating_bar = visual.Rect(win, width=bar_width, height=bar_height, lineColor=[1, 1, 1], fillColor=[0.2, 0.2, 0.2], pos=(0, bar_y), units='pix')
-    neg_label = visual.TextStim(win, text='- Negative', color=[1, -1, -1], height=18, pos=(-(bar_width/2) - 100, bar_y))
-    pos_label = visual.TextStim(win, text='+ Positive', color=[-1, 1, -1], height=18, pos=((bar_width/2) + 90, bar_y))
-    neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=28, pos=(-(bar_width/2), bar_y + 34))
-    pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=28, pos=((bar_width/2), bar_y + 34))
-    ticks = []
-    step = bar_width / 6.0
-    for i in range(7):
-        x = -bar_width/2 + i * step
-        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=16, pos=(x, bar_y - 26)))
-    rating_instr = visual.TextStim(win, text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)', color=[1, 1, 1], height=18, pos=(0, bar_y + 60), wrapWidth=1600)
+    ui = build_valence_ui(win, bar_height=14)
 
     # Show instructions (display the valence scale as part of the instructions)
     instruction.draw()
-    rating_instr.draw()
-    rating_bar.draw()
-    neg_label.draw(); pos_label.draw()
-    neg_emoji.draw(); pos_emoji.draw()
-    for t in ticks:
-        t.draw()
+    draw_valence_ui(ui, draw_instruction=True)
     win.flip()
     event.clearEvents()
     event.waitKeys(keyList=['space'])
@@ -160,21 +138,8 @@ def run_experiment():
             kb.clearEvents()
             event.clearEvents()
             img = image_stims[image_path]
-            # Scale and center image to avoid overlap with rating area (compressed)
-            top_margin = 40.0
-            gap = 30.0
-            rating_section_total = 100.0  # compressed region used by labels/emoji
-            rating_top_y = bar_y + (rating_section_total / 2.0)
-            image_area_top = (h / 2.0) - top_margin
-            image_area_bottom = rating_top_y + gap
-            available_h = max(100.0, image_area_top - image_area_bottom)
-            orig_w, orig_h = img.size
-            scale = min(1.0, available_h / orig_h, (w * 0.9) / orig_w)
-            new_w, new_h = orig_w * scale, orig_h * scale
-            img.size = (new_w, new_h)
-            # Center image in the available vertical region
-            pos_y = (image_area_top + image_area_bottom) / 2.0
-            img.pos = (0, pos_y)
+            # Scale and center image using utils to avoid overlap with rating area
+            img = layout_image_above_valence(win, img, ui)
 
             img.draw()
             frame_rects = []
@@ -182,13 +147,8 @@ def run_experiment():
                 frame_rects = draw_red_frame(win, img)
                 for r in frame_rects:
                     r.draw()
-            # Draw rating visuals at image onset
-            rating_instr.draw()
-            rating_bar.draw()
-            neg_label.draw(); pos_label.draw()
-            neg_emoji.draw(); pos_emoji.draw()
-            for t in ticks:
-                t.draw()
+            # Draw rating visuals at image onset (no instruction text during trials)
+            draw_valence_ui(ui, draw_instruction=False)
             img_onset_ts = outlet.push(f'IMG_ONSET:{image_id}')
             outlet.push('FRAME_PRESENT' if frame_present else 'FRAME_ABSENT')
             prompt_onset_visual_ts = win.flip()
@@ -229,9 +189,7 @@ def run_experiment():
                     if frame_present:
                         for r in frame_rects:
                             r.draw()
-                rating_instr.draw(); rating_bar.draw(); neg_label.draw(); pos_label.draw(); neg_emoji.draw(); pos_emoji.draw()
-                for t in ticks:
-                    t.draw()
+                draw_valence_ui(ui, draw_instruction=False)
                 win.flip()
                 core.wait(0.005)
 
