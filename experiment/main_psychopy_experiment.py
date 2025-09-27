@@ -1,11 +1,16 @@
 import os
 import random
 import numpy as np
+import math
 
 from psychopy import visual, core, event, data
 from psychopy.hardware import keyboard
 
-from .utils import load_settings, launch_openface, MarkerOutlet, draw_red_frame, build_valence_ui, draw_valence_ui, layout_image_above_valence
+from .utils import (
+    load_settings, launch_openface, MarkerOutlet, draw_red_frame,
+    build_valence_ui, draw_valence_ui, layout_image_above_valence,
+    build_countdown_ui, update_countdown_ui, draw_countdown_ui,
+)
 
 
 def run_experiment():
@@ -54,9 +59,9 @@ def run_experiment():
     feedback_text = visual.TextStim(win, text='', color=[1, 1, 1], height=28, wrapWidth=1200)
     instruction = visual.TextStim(win, text=(
         f'Welcome to the experiment\n\n'
-        f'Each trial shows an image for {image_duration:.1f}s.\n'
+        f'Each trial shows an image for {image_duration:.0f}s.\n'
         f'A valence rating scale (1 = most negative, 4 = neutral, 7 = most positive)\n'
-        f'appears below the image at the same time and remains for {emotion_duration:.1f}s.\n'
+        f'appears below the image at the same time and remains for {emotion_duration:.0f}s.\n'
         f'Press keys 1–7 to report how you feel.\n\n'
         f'Some images will have a red frame. Press SPACE during the image if the red frame is present;\n'
         f'do not press otherwise.\n\n'
@@ -68,6 +73,7 @@ def run_experiment():
     # Valence rating visuals (1 = most negative, 4 = neutral, 7 = most positive)
     w, h = win.size
     ui = build_valence_ui(win, bar_height=14)
+    countdown_ui = build_countdown_ui(win, duration_s=emotion_duration)
 
     # Show instructions (display the valence scale as part of the instructions)
     instruction.draw()
@@ -88,7 +94,7 @@ def run_experiment():
     csv_path = os.path.join(data_dir, f'behavior_{participant_id}_{session_id}.csv')
     with open(csv_path, 'w', encoding='utf-8') as f:
         headers = [
-            'trial_index', 'block', 'image_id', 'frame_present', 'response', 'reaction_time', 'correct', 'valence_rating', 'valence_rt', 'feedback',
+            'trial_index', 'block', 'image_id', 'frame_present', 'response', 'reaction_time', 'correct', 'valence_rating', 'valence_rt',
             'timestamp_trial_start', 'timestamp_img_onset', 'timestamp_response', 'timestamp_emotion', 'timestamp_trial_end'
         ]
         f.write(','.join(headers) + '\n')
@@ -149,6 +155,8 @@ def run_experiment():
                     r.draw()
             # Draw rating visuals at image onset (no instruction text during trials)
             draw_valence_ui(ui, draw_instruction=False)
+            update_countdown_ui(countdown_ui, remaining_s=emotion_duration)
+            draw_countdown_ui(countdown_ui)
             img_onset_ts = outlet.push(f'IMG_ONSET:{image_id}')
             outlet.push('FRAME_PRESENT' if frame_present else 'FRAME_ABSENT')
             prompt_onset_visual_ts = win.flip()
@@ -190,6 +198,10 @@ def run_experiment():
                         for r in frame_rects:
                             r.draw()
                 draw_valence_ui(ui, draw_instruction=False)
+                # Update countdown (remaining time in the emotion window)
+                remaining = max(0.0, end_time - core.getTime())
+                update_countdown_ui(countdown_ui, remaining_s=remaining)
+                draw_countdown_ui(countdown_ui)
                 win.flip()
                 core.wait(0.005)
 
@@ -225,7 +237,7 @@ def run_experiment():
             # Write CSV row
             with open(csv_path, 'a', encoding='utf-8') as f:
                 row = [
-                    str(i), block_name, image_id, str(frame_present), str(responded), str(rt), str(correct), valence_choice, str(valence_rt), feedback_msg,
+                    str(i), block_name, image_id, str(frame_present), str(responded), str(rt), str(correct), valence_choice, str(valence_rt),
                     str(trial_start_ts), str(img_onset_ts), str(response_ts), str(prompt_onset_visual_ts), str(trial_end_ts)
                 ]
                 f.write(','.join(row) + '\n')

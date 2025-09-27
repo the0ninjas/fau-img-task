@@ -185,6 +185,7 @@ def build_valence_ui(win: visual.Window, bar_height: float = 14):
     neg_label = visual.TextStim(win, text='Negative', color=[1, -1, -1], height=18, pos=(-(bar_width/2) - 100, bar_y))
     pos_label = visual.TextStim(win, text='Positive', color=[-1, 1, -1], height=18, pos=((bar_width/2) + 90, bar_y))
     neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=28, pos=(-(bar_width/2), bar_y + 34))
+    neutral_emoji = visual.TextStim(win, text='Neutral', color=[1, 1, 1], height=18, pos=(0, bar_y + 34))
     pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=28, pos=((bar_width/2), bar_y + 34))
 
     ticks = []
@@ -205,6 +206,7 @@ def build_valence_ui(win: visual.Window, bar_height: float = 14):
         'neg_label': neg_label,
         'pos_label': pos_label,
         'neg_emoji': neg_emoji,
+        'neutral_emoji': neutral_emoji,
         'pos_emoji': pos_emoji,
         'ticks': ticks,
         'rating_instr': rating_instr,
@@ -221,7 +223,9 @@ def draw_valence_ui(ui: dict, draw_instruction: bool = True):
     ui['grad_img'].draw()
     ui['rating_bar'].draw()
     ui['neg_label'].draw(); ui['pos_label'].draw()
-    ui['neg_emoji'].draw(); ui['pos_emoji'].draw()
+    ui['neg_emoji'].draw(); ui['pos_emoji'].draw();
+    if 'neutral_emoji' in ui and ui['neutral_emoji'] is not None:
+        ui['neutral_emoji'].draw()
     for t in ui['ticks']:
         t.draw()
 
@@ -242,4 +246,34 @@ def layout_image_above_valence(win: visual.Window, image_stim: visual.ImageStim,
     pos_y = (image_area_top + image_area_bottom) / 2.0
     image_stim.pos = (0, pos_y)
     return image_stim
+
+
+# ------------------------
+# Countdown (ring) utilities (static grey ring)
+# ------------------------
+
+def build_countdown_ui(win: visual.Window, duration_s: float, offset_xy: tuple | None = None,
+                       radius: int = 32) -> dict:
+    w, h = win.size
+    if offset_xy is None:
+        center = (w/2 - 60, h/2 - 60)
+    else:
+        center = offset_xy
+    track = visual.Circle(win, radius=radius, edges=128, lineColor=[0.3, 0.3, 0.3], lineWidth=4,
+                          fillColor=None, pos=center, units='pix')
+    text = visual.TextStim(win, text='', color=[0.7, 0.7, 0.7], height=24, pos=center, units='pix')
+    return {'track': track, 'text': text, 'center': center, 'radius': radius}
+
+
+def update_countdown_ui(ui: dict, remaining_s: float):
+    try:
+        ui['text'].text = f"{int(max(0, round(remaining_s)))}"
+    except Exception:
+        pass
+
+
+def draw_countdown_ui(ui: dict):
+    ui['track'].draw()
+    if 'text' in ui and ui['text'] is not None:
+        ui['text'].draw()
 
