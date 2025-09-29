@@ -7,8 +7,8 @@
   "lsl_stream_type": "Markers",
   "experiment_params": {
     "n_trials": 40,
-    "n_sample_trials": 4,
-    "frame_probability": 0.3,
+    "n_sample_trials": 10,
+    "frame_probability": 0.5,
     "fixation_duration": 1.0,
     "image_duration": 4.0,
     "emotion_duration": 7.0,

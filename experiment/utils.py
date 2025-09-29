@@ -5,6 +5,7 @@ import subprocess
 import time
 from datetime import datetime
 import numpy as np
+from pathlib import Path
 
 from psychopy import visual
 
@@ -22,10 +23,46 @@ def load_settings():
         return json.load(f)
 
 
+# ------------------------
+# OpenFace 2.2 configuration (hard-coded path as requested)
+# ------------------------
+OPENFACE_DIR = Path(r"C:\Users\ARCLP\Downloads\OpenFace_2.2.0_win_x64\OpenFace_2.2.0_win_x64")
+FEATURE_EXE = OPENFACE_DIR / "FeatureExtraction.exe"
+
+
 def launch_openface(settings, participant_id: str, session_id: str):
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-    # Prefer launching a Python script if configured
+    # Prefer launching OpenFace 2.2 FeatureExtraction.exe with AUs
+    try:
+        if FEATURE_EXE.exists():
+            out_root = settings.get('openface_output_dir', 'openface_out')
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            session_dir = os.path.abspath(os.path.join(out_root, f'{participant_id}_{session_id}_{timestamp}'))
+            os.makedirs(session_dir, exist_ok=True)
+
+            device_index = int(settings.get('camera_device_index', 0))
+
+            args = [
+                str(FEATURE_EXE),
+                '-device', str(device_index),
+                '-out_dir', session_dir,
+                '-pose', '-gaze', '-aus',
+            ]
+
+            creationflags = 0x08000000 if sys.platform.startswith('win') else 0
+            proc = subprocess.Popen(
+                args,
+                cwd=str(OPENFACE_DIR),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=creationflags,
+            )
+            return proc, session_dir
+    except Exception as e:
+        print(f'Warning: Failed to launch OpenFace 2.2 FeatureExtraction.exe: {e}')
+
+    # Fallback: launching a Python script if configured
     script_path = settings.get('openface_script')
     if script_path and not os.path.isabs(script_path):
         script_path = os.path.abspath(os.path.join(project_root, script_path))

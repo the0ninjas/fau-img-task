@@ -1,10 +1,7 @@
 import sys
 import time
 import cv2
-import threading
-import re
-import csv
-from datetime import datetime
+from pathlib import Path
 
 from psychopy import core
 
@@ -84,47 +81,43 @@ def main():
         else:
             print(f'Failed to open camera {cam_idx}.')
 
-    print('Launching OpenFace...')
-    # Create session dir (even if not launching old OpenFace subprocess)
-    from datetime import datetime as _dt
-    import os as _os
-    out_root = settings.get('openface_output_dir', 'openface_out')
-    session_dir = _os.path.abspath(_os.path.join(out_root, f'{participant_id}_{session_id}_{_dt.now().strftime("%Y%m%d_%H%M%S")}'))
-    _os.makedirs(session_dir, exist_ok=True)
+    # Ensure selected camera index is used by FeatureExtraction
+    settings['camera_device_index'] = cam_idx if cam_idx >= 0 else default_cam
+
+    print('Launching OpenFace 2.2 FeatureExtraction...')
+    of_proc, session_dir = launch_openface(settings, participant_id, session_id)
+    if not of_proc or not session_dir:
+        print('Failed to launch OpenFace FeatureExtraction.exe. Check path and permissions.')
+        return
     print(f'Output dir: {session_dir}')
 
-    # Prepare placeholder files for compatibility
-    stdout_log_path = None
-    parsed_csv_path = None
-    if session_dir:
-        stdout_log_path = f"{session_dir}\\openface_stdout.log"
-        parsed_csv_path = f"{session_dir}\\openface_parsed.csv"
-        try:
-            with open(stdout_log_path, 'w', encoding='utf-8') as _f:
-                pass
-            with open(parsed_csv_path, 'w', encoding='utf-8', newline='') as _csvf:
-                writer = csv.writer(_csvf)
-                writer.writerow(["timestamp_iso", "channel", "payload"])  # header only
-        except Exception:
-            pass
-
     outlet = MarkerOutlet(settings.get('lsl_stream_name', 'psychopy_markers'), settings.get('lsl_stream_type', 'Markers'))
-    print('Pushing a few test markers over 10 seconds...')
+    duration_s = 10.0
+    print(f'Pushing a few test markers over {duration_s:.0f} seconds while OpenFace runs...')
     t0 = core.getTime()
-
-    # Start OpenFace streaming in-process
-    from .openface_stream import OpenFaceStreamer
-    streamer = OpenFaceStreamer(camera_index=cam_idx if cam_idx >= 0 else settings.get('camera_device_index', 0))
-    stream_csv = streamer.stream(duration_seconds=10.0, session_dir=session_dir)
-    print(f'OpenFace stream saved to: {stream_csv}')
-
-    while core.getTime() - t0 < 10.0:
+    while core.getTime() - t0 < duration_s:
         ts = outlet.push('TEST_MARKER')
         print(f'Sent TEST_MARKER @ {ts:.3f}')
         core.wait(1.0)
 
-    print('Stopping OpenFace...')
-    print('Done.')
+    print('Stopping OpenFace FeatureExtraction...')
+    safe_terminate(of_proc)
+
+    # Locate newest CSV written by FeatureExtraction
+    csv_path = None
+    try:
+        pdir = Path(session_dir)
+        candidates = list(pdir.glob('webcam*.csv')) + list(pdir.glob('*.csv'))
+        if candidates:
+            candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+            csv_path = str(candidates[0])
+    except Exception:
+        csv_path = None
+
+    if csv_path:
+        print(f'OpenFace CSV written: {csv_path}')
+    else:
+        print('No CSV found in session directory yet. It may be flushed shortly after termination.')
 
 
 if __name__ == '__main__':
