@@ -60,8 +60,8 @@ def run_experiment():
     instruction = visual.TextStim(win, text=(
         f'Welcome to the experiment\n\n'
         f'Each trial shows an image for {image_duration:.0f}s.\n'
-        f'A valence rating scale (1 = most negative, 4 = neutral, 7 = most positive)\n'
-        f'appears below the image at the same time and remains for {emotion_duration:.0f}s.\n'
+        f'After the image, a valence rating scale (1 = most negative, 4 = neutral, 7 = most positive)\n'
+        f'is shown for {emotion_duration:.0f}s.\n'
         f'Press keys 1–7 to report how you feel.\n\n'
         f'Some images will have a red frame. Press SPACE during the image if the red frame is present;\n'
         f'do not press otherwise.\n\n'
@@ -75,7 +75,7 @@ def run_experiment():
     ui = build_valence_ui(win, bar_height=14)
     countdown_ui = build_countdown_ui(win, duration_s=emotion_duration)
 
-    # Show instructions (display the valence scale as part of the instructions)
+    # Show instructions (include valence scale)
     instruction.draw()
     draw_valence_ui(ui, draw_instruction=True)
     win.flip()
@@ -140,12 +140,13 @@ def run_experiment():
             outlet.push('FIXATION_ONSET')
             core.wait(fixation_duration)
 
-            # Image presentation with valence rating shown below the image
+            # Image-only presentation first
             kb.clearEvents()
             event.clearEvents()
             img = image_stims[image_path]
-            # Scale and center image using utils to avoid overlap with rating area
-            img = layout_image_above_valence(win, img, ui)
+            # Center image for image-only phase
+            img.size = (img.size[0], img.size[1])  # keep original size
+            img.pos = (0, 0)
 
             img.draw()
             frame_rects = []
@@ -153,26 +154,19 @@ def run_experiment():
                 frame_rects = draw_red_frame(win, img)
                 for r in frame_rects:
                     r.draw()
-            # Draw rating visuals at image onset (no instruction text during trials)
-            draw_valence_ui(ui, draw_instruction=False)
-            update_countdown_ui(countdown_ui, remaining_s=emotion_duration)
-            draw_countdown_ui(countdown_ui)
             img_onset_ts = outlet.push(f'IMG_ONSET:{image_id}')
             outlet.push('FRAME_PRESENT' if frame_present else 'FRAME_ABSENT')
-            prompt_onset_visual_ts = win.flip()
+            image_onset_visual_ts = win.flip()
             kb.clock.reset()
-            outlet.push('EMO_PROMPT_ONSET')
-
-            # Unified presentation: image for image_duration, rating for emotion_duration
+            
+            # Collect frame responses during image_duration only
             response_key = None
             response_ts = ''
             rt = ''
-            valence_choice = ''
-            valence_rt = ''
-            end_time = prompt_onset_visual_ts + emotion_duration
-            while core.getTime() < end_time:
-                t_since = core.getTime() - prompt_onset_visual_ts
-                keys = kb.getKeys(keyList=['space','1','2','3','4','5','6','7','escape'], waitRelease=False, clear=False)
+            end_img_time = image_onset_visual_ts + image_duration
+            while core.getTime() < end_img_time:
+                t_since = core.getTime() - image_onset_visual_ts
+                keys = kb.getKeys(keyList=['space','escape'], waitRelease=False, clear=False)
                 for k in keys:
                     if k.name == 'escape':
                         outlet.push('EXPT_ABORT')
@@ -183,25 +177,79 @@ def run_experiment():
                                 pass
                         win.close()
                         core.quit()
-                    if t_since < image_duration and response_key is None and k.name == 'space':
+                    if response_key is None and k.name == 'space':
                         response_key = 'space'
                         response_ts = outlet.push('KEYPRESS:space')
                         rt = k.rt
+
+                img.draw()
+                if frame_present:
+                    for r in frame_rects:
+                        r.draw()
+                win.flip()
+                core.wait(0.005)
+
+            # Valence-only presentation phase
+            valence_choice = ''
+            valence_rt = ''
+            # Reposition valence UI to center and set instruction text
+            w, h = win.size
+            center_y = 0
+            ui['bar_y'] = center_y
+            bar_width = ui.get('bar_width', 800)
+            # Center main line
+            rb = ui.get('rating_bar')
+            if rb is not None:
+                rb.start = (-(bar_width / 2.0), center_y)
+                rb.end = ((bar_width / 2.0), center_y)
+            # Adjust ticks and labels
+            tick_half = 12.0
+            for t in ui.get('ticks', []):
+                try:
+                    x = t.start[0]
+                except Exception:
+                    x = 0
+                t.start = (x, center_y - tick_half)
+                t.end = (x, center_y + tick_half)
+            for lbl in ui.get('tick_labels', []):
+                try:
+                    x = lbl.pos[0]
+                except Exception:
+                    x = 0
+                lbl.pos = (x, center_y - 26)
+            # Optional emojis near ends
+            if ui.get('neg_emoji') is not None:
+                ui['neg_emoji'].pos = (-(bar_width/2.0), center_y + 34)
+            if ui.get('pos_emoji') is not None:
+                ui['pos_emoji'].pos = ((bar_width/2.0), center_y + 34)
+            # Instruction text
+            if ui.get('rating_instr') is not None:
+                ui['rating_instr'].text = 'Press keys 1–7 to report how you feel. (1 = most negative, 4 = neutral, 7 = most positive)'
+                ui['rating_instr'].pos = (0, center_y + 60)
+            # Draw valence UI every frame during rating phase
+            draw_valence_ui(ui, draw_instruction=True)
+            outlet.push('EMO_PROMPT_ONSET')
+            prompt_onset_visual_ts = win.flip()
+            kb.clock.reset()
+            end_valence_time = prompt_onset_visual_ts + emotion_duration
+            while core.getTime() < end_valence_time:
+                keys = kb.getKeys(keyList=['1','2','3','4','5','6','7','escape'], waitRelease=False, clear=False)
+                for k in keys:
+                    if k.name == 'escape':
+                        outlet.push('EXPT_ABORT')
+                        if of_proc:
+                            try:
+                                of_proc.terminate()
+                            except Exception:
+                                pass
+                        win.close()
+                        core.quit()
                     if valence_choice == '' and k.name in [str(i) for i in range(1,8)]:
                         valence_choice = k.name
                         valence_rt = k.rt
                         outlet.push(f'VALENCE_RATING:{valence_choice}')
-
-                if t_since < image_duration:
-                    img.draw()
-                    if frame_present:
-                        for r in frame_rects:
-                            r.draw()
-                draw_valence_ui(ui, draw_instruction=False)
-                # Update countdown (remaining time in the emotion window)
-                remaining = max(0.0, end_time - core.getTime())
-                update_countdown_ui(countdown_ui, remaining_s=remaining)
-                draw_countdown_ui(countdown_ui)
+                # Persist the valence UI
+                draw_valence_ui(ui, draw_instruction=True)
                 win.flip()
                 core.wait(0.005)
 
@@ -226,7 +274,7 @@ def run_experiment():
                 win.flip()
                 core.wait(2.0)
 
-            # (No extra loop here; unified loop already kept rating until end)
+            # (Two-phase presentation implemented: image then valence)
 
             # ITI
             win.flip()

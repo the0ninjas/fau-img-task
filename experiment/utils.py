@@ -4,7 +4,6 @@ import json
 import subprocess
 import time
 from datetime import datetime
-import numpy as np
 from pathlib import Path
 
 from psychopy import visual
@@ -26,7 +25,7 @@ def load_settings():
 # ------------------------
 # OpenFace 2.2 configuration (hard-coded path as requested)
 # ------------------------
-OPENFACE_DIR = Path(r"C:\Users\ARCLP\Downloads\OpenFace_2.2.0_win_x64\OpenFace_2.2.0_win_x64")
+OPENFACE_DIR = Path(r"C:\Program Files\OpenFace_2.2.0_win_x64\OpenFace_2.2.0_win_x64")
 FEATURE_EXE = OPENFACE_DIR / "FeatureExtraction.exe"
 
 
@@ -194,58 +193,69 @@ def get_image_list(stim_dir: str):
 def build_valence_ui(win: visual.Window, bar_height: float = 14):
     """Create and return the valence rating UI elements bound to the given window.
 
-    Returns a dictionary with keys: rating_bar, grad_img, neg_label, pos_label,
-    neg_emoji, pos_emoji, ticks, rating_instr, bar_y, bar_width, bar_height.
+    Returns a dictionary with keys: rating_bar, neg_label, pos_label,
+    neg_emoji, neutral_emoji, pos_emoji, ticks, rating_instr, bar_y, bar_width, bar_height.
     """
     w, h = win.size
     bar_width = min(900, int(w * 0.8))
     # Compress rating section and push it closer to bottom
     bar_y = -h / 2 + 60
 
-    # Border-only bar; gradient drawn via single ImageStim
-    rating_bar = visual.Rect(
-        win, width=bar_width, height=bar_height, lineColor=[1, 1, 1], fillColor=None, pos=(0, bar_y), units='pix'
+    # Simple horizontal line (rating bar)
+    rating_bar = visual.Line(
+        win,
+        start=(-(bar_width / 2.0), bar_y),
+        end=((bar_width / 2.0), bar_y),
+        lineColor=[1, 1, 1],
+        lineWidth=4,
+        units='pix'
     )
+    
 
-    # Pre-render gradient array (float RGB 0..1) from red->green left to right
-    grad_arr = np.zeros((int(bar_height), int(bar_width), 3), dtype=np.float32)
-    for x in range(int(bar_width)):
-        t = x / max(1, int(bar_width) - 1)
-        r = 1.0 - t
-        g = t
-        grad_arr[:, x, 0] = r
-        grad_arr[:, x, 1] = g
-        grad_arr[:, x, 2] = 0.0
-    grad_img = visual.ImageStim(win, image=grad_arr, size=(bar_width, bar_height), pos=(0, bar_y), units='pix', interpolate=True)
-
-    # Labels, emojis, ticks, instruction
-    neg_label = visual.TextStim(win, text='Negative', color=[1, -1, -1], height=18, pos=(-(bar_width/2) - 100, bar_y))
-    pos_label = visual.TextStim(win, text='Positive', color=[-1, 1, -1], height=18, pos=((bar_width/2) + 90, bar_y))
+    # Emojis (optional accents)
     neg_emoji = visual.TextStim(win, text='☹', color=[1, 1, 1], height=28, pos=(-(bar_width/2), bar_y + 34))
-    neutral_emoji = visual.TextStim(win, text='Neutral', color=[1, 1, 1], height=18, pos=(0, bar_y + 34))
     pos_emoji = visual.TextStim(win, text='☺', color=[1, 1, 1], height=28, pos=((bar_width/2), bar_y + 34))
 
+    # Vertical stroke ticks and numeric labels for positions 1..7
     ticks = []
+    tick_labels = []
     step = bar_width / 6.0
+    tick_half = 12.0
     for i in range(7):
         x = -bar_width/2 + i * step
-        ticks.append(visual.TextStim(win, text=str(i+1), color=[1, 1, 1], height=16, pos=(x, bar_y - 26)))
+        ticks.append(
+            visual.Line(
+                win,
+                start=(x, bar_y - tick_half),
+                end=(x, bar_y + tick_half),
+                lineColor=[1, 1, 1],
+                lineWidth=2,
+                units='pix'
+            )
+        )
+        tick_labels.append(
+            visual.TextStim(
+                win,
+                text=str(i + 1),
+                color=[1, 1, 1],
+                height=16,
+                pos=(x, bar_y - 26),
+                units='pix'
+            )
+        )
 
     rating_instr = visual.TextStim(
         win,
-        text='How do you feel? (1 = most negative, 4 = neutral, 7 = most positive)',
+        text='Press keys 1–7 to report how you feel. (1 = most negative, 4 = neutral, 7 = most positive)',
         color=[1, 1, 1], height=18, pos=(0, bar_y + 60), wrapWidth=1600
     )
 
     return {
         'rating_bar': rating_bar,
-        'grad_img': grad_img,
-        'neg_label': neg_label,
-        'pos_label': pos_label,
         'neg_emoji': neg_emoji,
-        'neutral_emoji': neutral_emoji,
         'pos_emoji': pos_emoji,
         'ticks': ticks,
+        'tick_labels': tick_labels,
         'rating_instr': rating_instr,
         'bar_y': bar_y,
         'bar_width': bar_width,
@@ -257,14 +267,20 @@ def draw_valence_ui(ui: dict, draw_instruction: bool = True):
     """Draw the valence rating UI elements in the correct order."""
     if draw_instruction and ui.get('rating_instr') is not None:
         ui['rating_instr'].draw()
-    ui['grad_img'].draw()
-    ui['rating_bar'].draw()
-    ui['neg_label'].draw(); ui['pos_label'].draw()
-    ui['neg_emoji'].draw(); ui['pos_emoji'].draw();
-    if 'neutral_emoji' in ui and ui['neutral_emoji'] is not None:
-        ui['neutral_emoji'].draw()
-    for t in ui['ticks']:
+    rating_bar = ui.get('rating_bar')
+    if rating_bar is not None:
+        rating_bar.draw()
+    for key in ('neg_label', 'pos_label', 'neg_emoji', 'pos_emoji'):
+        stim = ui.get(key)
+        if stim is not None:
+            stim.draw()
+    neutral = ui.get('neutral_emoji')
+    if neutral is not None:
+        neutral.draw()
+    for t in ui.get('ticks', []):
         t.draw()
+    for lbl in ui.get('tick_labels', []):
+        lbl.draw()
 
 
 def layout_image_above_valence(win: visual.Window, image_stim: visual.ImageStim, ui: dict,
